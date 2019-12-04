@@ -53,12 +53,19 @@ class RegressionTree:
             y[indices] = value
         return y
 
-    def print_tree(self):
+    def print_tree(self, feature_names=None):
         """
         Print a graphical representation of a tree
         """
         for pre, _, node in RenderTree(self.tree):
-            treestr = pre + str(node)
+            if feature_names is not None:
+                if node.is_leaf:
+                    treestr = pre + str(node)
+                else:
+                    treestr = pre + "{} <= {:.2f}?".format(feature_names[node.split_feature],
+                                                           node.split_value)
+            else:
+                treestr = pre + str(node)
             print(treestr.ljust(6))
 
 
@@ -130,8 +137,9 @@ class Node(NodeMixin):
             """
             Calculate sum of variances in the two child nodes
             """
-            var = np.var(data[indices], axis=0) if indices.any() else 0
-            var += np.var(data[~indices], axis=0) if (~indices).any() else 0
+            var = np.var(data[indices], axis=0) if indices.any() else np.Inf
+            var += np.var(data[~indices], axis=0) if (~indices).any() else np.Inf
+            # Inf is used here to force not to split in a way that nothing remains on one side
             return var
 
         for val in range(variances.shape[0]):
@@ -146,5 +154,5 @@ class Node(NodeMixin):
     def __str__(self):
         if self.is_leaf:
             return "{:.2f}".format(self.value)
-        else:
-            return "x_{} <= {:.2f}?".format(self.split_feature, self.split_value)        
+        return "x_{} <= {:.2f}?".format(self.split_feature, self.split_value)
+  
