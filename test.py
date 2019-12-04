@@ -14,7 +14,7 @@ X, y = load_boston(return_X_y=True)
 data = np.hstack((X[:, cols], y[:, np.newaxis]))
 np.random.seed(666)
 np.random.shuffle(data)
-numel = 100
+numel = 5
 X = data[numel:, :-1]
 y = data[numel:, -1]
 test = data[0:numel, :-1]
@@ -23,14 +23,14 @@ print("Mean of labels: {}".format(np.mean(correct_values)))
 
 
 # fit a single tree
-reg = RegressionTree(max_depth=2)
+reg = RegressionTree(max_depth=3)
 reg.fit(X, y)
 prediction = reg.predict(test)
 
 reg.print_tree(features)
 
 # fit boosted trees
-bst = BoostedTree(max_depth=2, num_iter=100)
+bst = BoostedTree(max_depth=3, num_iter=2)
 bst.fit(X, y)
 bst_prediction = bst.predict(test)
 

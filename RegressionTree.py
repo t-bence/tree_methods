@@ -78,7 +78,7 @@ class RegressionTree:
                         indices &= left_indices
                     else:
                         indices &= ~left_indices
-                left = ancestor.left
+                    left = ancestor.left
             y[indices] = leaf.value
         return y
 
@@ -136,7 +136,7 @@ class Node(NodeMixin):
         """
         Prune the tree: remove less useful branches based on cost-complexity quantification
         """
-        pass
+        raise NotImplementedError
 
     def _leaf_values(self, y, left_indices):
         """
