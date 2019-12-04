@@ -27,6 +27,7 @@ class RegressionTree:
         root = Node(indices=np.asarray([True] * num_rows))
         root.split(X, y)
         root.children[0].split(X, y)
+        root.children[1].split(X, y)
         self.tree = root
 
     def predict(self, X):
@@ -57,18 +58,15 @@ class RegressionTree:
         Print a graphical representation of a tree
         """
         for pre, _, node in RenderTree(self.tree):
-            if node.is_leaf:  # final leaf
-                treestr = u"{}{}{:.2f}".format(pre, node.left.__str__().ljust(6), node.value)
-            else:
-                treestr = u"{}x_{} <= {:.2f}".format(pre, node.split_feature, node.split_value)
-            print(treestr.ljust(10))
+            treestr = pre + str(node)
+            print(treestr.ljust(6))
 
 
 class Node(NodeMixin):
     """
     A class to store nodes
     """
-    def __init__(self, indices=None, parent=None, left=True, value=None):
+    def __init__(self, indices=True, parent=None, left=True, value=None):
         self.parent = parent
         self.indices = indices
         self.split_feature = None
@@ -88,10 +86,12 @@ class Node(NodeMixin):
         self.split_feature, self.split_value = self._best_split(X_here, y_here)
         # indices in the <= part (left node)
         left_indices = X[:, self.split_feature] <= self.split_value
-        left_value, right_value = self._leaf_values(y, left_indices)
+        leaf_values = self._leaf_values(y, left_indices)
         self.children = [
-            Node(indices=(self.indices & left_indices), parent=self, left=True, value=left_value),
-            Node(indices=(self.indices & (~left_indices)), parent=self, left=False, value=right_value)
+            Node(indices=(self.indices & left_indices), parent=self,
+                 left=True, value=leaf_values[0]),
+            Node(indices=(self.indices & (~left_indices)), parent=self,
+                 left=False, value=leaf_values[1])
         ]
         return self.children
 
@@ -106,9 +106,13 @@ class Node(NodeMixin):
         Return the values of the two leaves at a terminal node: left is where x<=a, right is else,
         the value is the mean of the values contained in the partitions
         """
-        left_value = np.mean(y[self.indices & left_indices]) if (self.indices & left_indices).any() else np.NaN
-        right_value = np.mean(y[self.indices & ~left_indices]) if (self.indices & ~left_indices).any() else np.NaN
-        return (left_value, right_value)
+        leaf_values = []
+        for left_index in (left_indices, ~left_indices):
+            if (self.indices & left_index).any():
+                leaf_values.append(np.mean(y[self.indices & left_index]))
+            else:
+                leaf_values.append(np.NaN)
+        return leaf_values
 
 
     def _best_split(self, X, y):
@@ -140,8 +144,7 @@ class Node(NodeMixin):
         return (feature, percentiles[value_index, feature])
 
     def __str__(self):
-        if self.split_feature:
-            return "Node: x_{} <= {}?".format(self.split_feature, self.split_value)
+        if self.is_leaf:
+            return "{:.2f}".format(self.value)
         else:
-            return "{}: {}".format("Y" if self.left else "N", self.value)
-        
+            return "x_{} <= {:.2f}?".format(self.split_feature, self.split_value)        
