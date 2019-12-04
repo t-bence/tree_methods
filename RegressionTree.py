@@ -1,9 +1,38 @@
 """
 Regression Tree algorithm
 """
-
+import unittest
 import numpy as np
 from anytree import NodeMixin, RenderTree
+
+class BoostedTree:
+    """
+    A boosted tree learer object
+    """
+
+    def __init__(self, max_depth=3, num_iter=3):
+        """ Construct a boosted tree model """
+        self.trees = []
+        self.max_depth = max_depth
+        self.num_iter = num_iter
+
+    def fit(self, X, y):
+        """ Fit data and create model """
+        residual = y
+        for _ in range(self.num_iter):
+            tree = RegressionTree(max_depth=self.max_depth)
+            tree.fit(X, residual)
+            residual = residual - tree.predict(X)
+            self.trees.append(tree)
+        return self
+
+    def predict(self, X):
+        """ Predict values using the model """
+        prediction = np.zeros((X.shape[0],))
+        for tree in self.trees:
+            prediction += tree.predict(X)
+        return prediction
+
 
 class RegressionTree:
     """
@@ -29,6 +58,7 @@ class RegressionTree:
             for leaf in root.leaves:
                 leaf.split(X, y)
         self.tree = root
+        return self
 
     def predict(self, X):
         """
@@ -115,10 +145,8 @@ class Node(NodeMixin):
         """
         leaf_values = []
         for left_index in (left_indices, ~left_indices):
-            if (self.indices & left_index).any():
-                leaf_values.append(np.mean(y[self.indices & left_index]))
-            else:
-                leaf_values.append(np.NaN)
+            assert (self.indices & left_index).any(), "empty leaf found"
+            leaf_values.append(np.mean(y[self.indices & left_index]))
         return leaf_values
 
 
@@ -155,4 +183,39 @@ class Node(NodeMixin):
         if self.is_leaf:
             return "{:.2f}".format(self.value)
         return "x_{} <= {:.2f}?".format(self.split_feature, self.split_value)
-  
+
+class Tests(unittest.TestCase):
+    """
+    Test case for made up data and 2-level tree
+    """
+    def test_best_split(self):
+        """ Test where splitting is done """
+        X1 = np.array([[0.3, 0.7], [0.5, 0.6], [0.7, 0.6], [0.3, 0.4], [0.5, 0.3], [0.7, 0.4]])
+        y1 = np.array([10, 8, 7, 1, 2, 4])
+        node = Node()
+        cut_feature, cut_value = node._best_split(X1, y1) # pylint: disable=protected-access
+        self.assertEqual(cut_feature, 1)
+        self.assertTrue(cut_value >= 0.4)
+        self.assertTrue(cut_value < 0.6)
+
+        # expected output: something like (1, 0.5)
+    def test_made_up_data_depth_2(self):
+        """ Test with 2-level tree """
+        X2 = np.array([[0.3, 0.7], [0.5, 0.6], [0.7, 0.6], [0.3, 0.4], [0.5, 0.3], [0.7, 0.4]])
+        y2 = np.array([10, 8, 7, 1, 2, 4])
+        reg2 = RegressionTree(max_depth=2)
+        reg2.fit(X2, y2)
+        prediction2 = list(reg2.predict(np.array([[0.4, 0.4], [0.6, 0.6], [0.8, 0.4], [0.2, 0.8]])))
+        self.assertEqual(prediction2, list(np.array([1.50, 7.50, 4.00, 10.00])))
+
+    def test_made_up_data_depth_3(self):
+        """ Test with 3-level tree """
+        X3 = np.array([[0.3, 0.7], [0.5, 0.6], [0.7, 0.6], [0.3, 0.4], [0.5, 0.3], [0.7, 0.4]])
+        y3 = np.array([10, 8, 7, 1, 2, 4])
+        reg3 = RegressionTree(max_depth=3)
+        reg3.fit(X3, y3)
+        prediction3 = list(reg3.predict(np.array([[0.4, 0.4], [0.6, 0.6], [0.8, 0.4], [0.2, 0.8]])))
+        self.assertEqual(prediction3, list(np.array([2.00, 7.00, 4.00, 10.00])))
+
+if __name__ == '__main__':
+    unittest.main()
