@@ -25,9 +25,9 @@ class RegressionTree:
         num_rows = X.shape[0]
         # create root node
         root = Node(indices=np.asarray([True] * num_rows))
-        root.split(X, y)
-        root.children[0].split(X, y)
-        root.children[1].split(X, y)
+        for _ in range(self.max_depth):
+            for leaf in root.leaves:
+                leaf.split(X, y)
         self.tree = root
 
     def predict(self, X):
@@ -41,7 +41,6 @@ class RegressionTree:
         left = True
         for leaf in self.tree.leaves:
             indices = np.array([True] * X.shape[0])  # initialize dummy index
-            value = leaf.value
             for ancestor in NodeMixin.iter_path_reverse(leaf):
                 if ancestor.split_value:
                     left_indices = X[:, ancestor.split_feature] <= ancestor.split_value
@@ -50,7 +49,7 @@ class RegressionTree:
                     else:
                         indices &= ~left_indices
                 left = ancestor.left
-            y[indices] = value
+            y[indices] = leaf.value
         return y
 
     def print_tree(self, feature_names=None):
@@ -62,7 +61,7 @@ class RegressionTree:
                 if node.is_leaf:
                     treestr = pre + str(node)
                 else:
-                    treestr = pre + "{} <= {:.2f}?".format(feature_names[node.split_feature],
+                    treestr = pre + "{} <= {:.4f}?".format(feature_names[node.split_feature],
                                                            node.split_value)
             else:
                 treestr = pre + str(node)
@@ -86,6 +85,8 @@ class Node(NodeMixin):
         Split a node to minimise the sum of the variances in the two resulting nodes
         """
         assert not self.children, "Can't split a node that already has children"
+        if self.indices.sum() <= 1: # don't split if there is one element only
+            return
         # data in the present node
         X_here = X[self.indices, :]
         y_here = y[self.indices]
@@ -100,7 +101,6 @@ class Node(NodeMixin):
             Node(indices=(self.indices & (~left_indices)), parent=self,
                  left=False, value=leaf_values[1])
         ]
-        return self.children
 
     def prune(self):
         """
