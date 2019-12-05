@@ -5,6 +5,46 @@ import unittest
 import numpy as np
 from anytree import NodeMixin, RenderTree
 
+class AdaBoostedClassifier:
+    """
+    A boosted regressor tree ensemble object
+    """
+
+    def __init__(self, num_iter=3):
+        """ Construct a boosted tree model """
+        self.trees = []
+        self.max_depth = 1  # use stumps
+        self.num_iter = num_iter
+        self.tree_weights = []
+
+    def fit(self, X, y):
+        """ Fit data and create model """
+        data_weights = np.ones_like(y) / len(y)  # start with equal weights
+        for _ in range(self.num_iter):
+            tree = RegressorTree(max_depth=self.max_depth)
+            tree.fit(X, y)
+            prediction = tree.predict(X) >= 0.5
+            mistaken = y == (~prediction)
+            self.trees.append(tree)
+            total_error = np.sum(data_weights * mistaken) # weights of incorrect elements
+            tree_weight = 1/2 * np.log((1 - total_error) / (total_error + 1e-10) + 1e-10)
+            self.tree_weights.append(tree_weight)
+            data_weights[mistaken] = data_weights[mistaken] * np.exp(tree_weight)
+            data_weights[~mistaken] = data_weights[~mistaken] * np.exp(-tree_weight)
+            data_weights = data_weights / np.sum(data_weights)
+            # generate new data set from sampling with replacement
+            inds = np.random.choice(y.shape[0], size=y.shape[0], replace=True, p=data_weights)
+            X = X[inds, :]
+            y = y[inds]
+        return self
+
+    def predict(self, X):
+        """ Predict values using the model """
+        prediction = np.zeros((X.shape[0],))
+        for tree, tree_weight in zip(self.trees, self.tree_weights):
+            prediction += tree_weight * tree.predict(X)
+        return prediction >= 0.5
+
 class BoostedRegressor:
     """
     A boosted regressor tree ensemble object
@@ -232,6 +272,31 @@ class Tests(unittest.TestCase):
         self.assertTrue(cut_value >= 0.4)
         self.assertTrue(cut_value < 0.6)
 
+    def test_classifier(self):
+        """ Test the classifier following youtube.com/watch?v=LsK-xG1cLYA """
+        test_X = np.array([[True, True, 205], [False, True, 180], [True, False, 210],
+                           [True, True, 167], [False, True, 156], [False, True, 125],
+                           [True, False, 168], [True, True, 172]])
+        test_y = np.array([True, True, True, True, False, False, False, False])
+        test_reg = RegressorTree(max_depth=1)
+        test_reg.fit(test_X, test_y)
+        # test_reg.print_tree(['ChPn', 'BlAr', 'PaWe'])
+        self.assertTrue(
+            list(test_reg.predict(np.array([[True, False, 180], [True, False, 172]]))),
+            [True, False])
+
+    def test_AdaBoost_classifier(self):
+        """ Test the classifier following youtube.com/watch?v=LsK-xG1cLYA """
+        test_X = np.array([[True, True, 205], [False, True, 180], [True, False, 210],
+                           [True, True, 167], [False, True, 156], [False, True, 125],
+                           [True, False, 168], [True, True, 172]])
+        test_y = np.array([True, True, True, True, False, False, False, False])
+        test_ada = AdaBoostedClassifier(num_iter=1)
+        test_ada.fit(test_X, test_y)
+        pred_ada = test_ada.predict(np.array([[True, False, 180], [True, False, 172]]))
+        # test_ada.trees[0].print_tree(['ChPn', 'BlAr', 'PaWe'])
+        self.assertEqual(list(pred_ada), [True, False])
+
     def test_simplest_case(self):
         """ Test a simplistic case """
         test_X = np.array([[0, 0], [1, 0], [0, 1], [1, 1]])
@@ -240,7 +305,6 @@ class Tests(unittest.TestCase):
         test_reg.fit(test_X, test_y)
         test_pred = test_reg.predict(np.array([[-1, -1], [2, -1], [-1, 2], [2, 2]]))
         self.assertEqual(list(test_pred), [1., 2., 3., 4.])
-
 
     def test_made_up_data_depth_2(self):
         """ Test with 2-level tree """
