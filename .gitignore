@@ -1,1 +1,5 @@
 __pycache__/RegressionTree.cpython-36.pyc
+__pycache__/*
+__pycache__
+.vscode
+.vscode/*

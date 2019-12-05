@@ -1,5 +1,10 @@
 """
 Regression Tree algorithm
+
+TODO:
+* only split in AdaBoostedClassifier if Gini is reduced
+* create AdaBoostedRegressor as well
+
 """
 import unittest
 import numpy as np
@@ -7,7 +12,7 @@ from anytree import NodeMixin, RenderTree
 
 class AdaBoostedClassifier:
     """
-    A boosted regressor tree ensemble object
+    An Ada-boosted classifier tree ensemble
     """
 
     def __init__(self, num_iter=3):
@@ -23,9 +28,9 @@ class AdaBoostedClassifier:
         for _ in range(self.num_iter):
             tree = RegressorTree(max_depth=self.max_depth)
             tree.fit(X, y)
+            self.trees.append(tree)
             prediction = tree.predict(X) >= 0.5
             mistaken = y == (~prediction)
-            self.trees.append(tree)
             total_error = np.sum(data_weights * mistaken) # weights of incorrect elements
             tree_weight = 1/2 * np.log((1 - total_error) / (total_error + 1e-10) + 1e-10)
             self.tree_weights.append(tree_weight)
@@ -45,32 +50,37 @@ class AdaBoostedClassifier:
             prediction += tree_weight * tree.predict(X)
         return prediction >= 0.5
 
-class BoostedRegressor:
-    """
-    A boosted regressor tree ensemble object
-    """
+class GradientBoostedRegressor:
+    """ A gradient-boosted regressor tree ensemble """
 
-    def __init__(self, max_depth=3, num_iter=3):
+    def __init__(self, max_depth=3, num_iter=3, eta=0.1):
         """ Construct a boosted tree model """
         self.trees = []
         self.max_depth = max_depth
         self.num_iter = num_iter
+        self.eta = eta
 
     def fit(self, X, y):
         """ Fit data and create model """
         residual = y
-        for _ in range(self.num_iter):
+        # the first tree should be a leaf with the mean
+        tree = RegressorTree(max_depth=0)
+        tree.fit(X, y)
+        self.trees.append(tree)
+        prediction = tree.predict(X)
+        for _ in range(self.num_iter - 1):
             tree = RegressorTree(max_depth=self.max_depth)
             tree.fit(X, residual)
-            residual = residual - tree.predict(X)
             self.trees.append(tree)
+            prediction = prediction + self.eta * tree.predict(X)
+            residual = y - prediction
         return self
 
     def predict(self, X):
         """ Predict values using the model """
-        prediction = np.zeros((X.shape[0],))
-        for tree in self.trees:
-            prediction += tree.predict(X)
+        prediction = self.trees[0].predict(X)
+        for tree in self.trees[1:]:
+            prediction += self.eta * tree.predict(X)
         return prediction
 
 
@@ -91,7 +101,7 @@ class RegressorTree:
         """
         num_rows = X.shape[0]
         # create root node
-        root = RegressorNode(indices=np.asarray([True] * num_rows))
+        root = RegressorNode(indices=np.asarray([True] * num_rows), value=np.mean(y))
         for _ in range(self.max_depth):
             for leaf in root.leaves:
                 leaf.split(X, y)

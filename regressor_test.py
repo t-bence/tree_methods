@@ -4,10 +4,10 @@ test file for the regression tree algorithm
 import numpy as np
 from sklearn.datasets import load_boston
 
-from TreeMethods import RegressorTree, BoostedRegressor
+from TreeMethods import RegressorTree, GradientBoostedRegressor
 
 ### BOSTON case
-
+"""
 cols = [0, 1, 2, 4, 5, 6, 7, 9, 10]
 features = boston_dataset = load_boston().feature_names[cols]
 X, y = load_boston(return_X_y=True)
@@ -20,17 +20,23 @@ y = data[numel:, -1]
 test = data[0:numel, :-1]
 correct_values = data[0:numel, -1]
 print("Mean of labels: {}".format(np.mean(correct_values)))
+"""
 
+X = np.array([[1.6, 2, 0], [1.6, 1, 1], [1.5, 2, 1], [1.8, 0, 0],
+              [1.5, 1, 0], [1.4, 2, 1]])
+y = np.array([88, 76, 56, 73, 77, 57])
+features = ['height', 'color', 'gender']
+test = np.array([[1.6, 2, 0]])
+correct_values = np.array([88])
 
 # fit a single tree
-reg = RegressorTree(max_depth=3)
+reg = RegressorTree(max_depth=2)
 reg.fit(X, y)
 prediction = reg.predict(test)
-
 reg.print_tree(features)
 
 # fit boosted trees
-bst = BoostedRegressor(max_depth=3, num_iter=10)
+bst = GradientBoostedRegressor(max_depth=2, num_iter=10)
 bst.fit(X, y)
 bst_prediction = bst.predict(test)
 
