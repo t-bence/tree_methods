@@ -30,7 +30,7 @@ prediction = reg.predict(test)
 reg.print_tree(features)
 
 # fit boosted trees
-bst = BoostedTree(max_depth=3, num_iter=2)
+bst = BoostedTree(max_depth=3, num_iter=10)
 bst.fit(X, y)
 bst_prediction = bst.predict(test)
 

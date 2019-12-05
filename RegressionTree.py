@@ -7,7 +7,7 @@ from anytree import NodeMixin, RenderTree
 
 class BoostedTree:
     """
-    A boosted tree learer object
+    A boosted tree learner object
     """
 
     def __init__(self, max_depth=3, num_iter=3):
@@ -53,7 +53,7 @@ class RegressionTree:
         """
         num_rows = X.shape[0]
         # create root node
-        root = Node(indices=np.asarray([True] * num_rows))
+        root = RegressorNode(indices=np.asarray([True] * num_rows))
         for _ in range(self.max_depth):
             for leaf in root.leaves:
                 leaf.split(X, y)
@@ -68,11 +68,12 @@ class RegressionTree:
         assert self.tree, "The tree must exist, call fit before predict!"
         y = np.zeros((X.shape[0], ))
         # propagate the values down the leaves
-        left = True
         for leaf in self.tree.leaves:
             indices = np.array([True] * X.shape[0])  # initialize dummy index
-            for ancestor in NodeMixin.iter_path_reverse(leaf):
-                if ancestor.split_value:
+            for ancestor in NodeMixin.iter_path_reverse(leaf):  # iteration begins at the leaf node
+                if ancestor.is_leaf:
+                    left = ancestor.left
+                else:
                     left_indices = X[:, ancestor.split_feature] <= ancestor.split_value
                     if left:
                         indices &= left_indices
@@ -100,7 +101,8 @@ class RegressionTree:
 
 class Node(NodeMixin):
     """
-    A class to store nodes
+    A base class to store nodes - should not be used directly.
+    Use RegressorNode or ClassifierNode!
     """
     def __init__(self, indices=True, parent=None, left=True, value=None):
         self.parent = parent
@@ -111,78 +113,112 @@ class Node(NodeMixin):
         self.left = left
 
     def split(self, X, y):
-        """
-        Split a node to minimise the sum of the variances in the two resulting nodes
-        """
+        """ Split a node to minimise a target in the two resulting nodes """
         assert not self.children, "Can't split a node that already has children"
         if self.indices.sum() <= 1: # don't split if there is one element only
-            return
-        # data in the present node
-        X_here = X[self.indices, :]
-        y_here = y[self.indices]
-        # find best split
-        self.split_feature, self.split_value = self._best_split(X_here, y_here)
+            return None
+        # find out best split: search all directions but only at each tenth percentile of values
+        percentiles = np.percentile(X, np.arange(10, 100, 10), axis=0)
+        split_target = np.zeros_like(percentiles)
+        for val in range(split_target.shape[0]):
+            for feat in range(split_target.shape[1]):
+                limit = percentiles[val, feat]
+                left_indices = X[self.indices, feat] <= limit
+                split_target[val, feat] = self._split_target(y[self.indices], left_indices)
+        value_index, self.split_feature = np.unravel_index(  # pylint: disable=unbalanced-tuple-unpacking
+            np.argmin(split_target),
+            split_target.shape
+        )
+        self.split_value = percentiles[value_index, self.split_feature]
         # indices in the <= part (left node)
         left_indices = X[:, self.split_feature] <= self.split_value
-        leaf_values = self._leaf_values(y, left_indices)
-        self.children = [
-            Node(indices=(self.indices & left_indices), parent=self,
-                 left=True, value=leaf_values[0]),
-            Node(indices=(self.indices & (~left_indices)), parent=self,
-                 left=False, value=leaf_values[1])
-        ]
+        self.children = self.make_children(y, left_indices)
 
-    def prune(self):
-        """
-        Prune the tree: remove less useful branches based on cost-complexity quantification
-        """
+        return (self.split_feature, self.split_value)
+
+    def make_children(self, y, left_indices):
+        """ Return the children """
         raise NotImplementedError
 
-    def _leaf_values(self, y, left_indices):
-        """
-        Return the values of the two leaves at a terminal node: left is where x<=a, right is else,
-        the value is the mean of the values contained in the partitions
-        """
+    def _split_target(self, y, indices):
+        """ Calculate a splitting target to be minimised """
+        raise NotImplementedError
+
+    def __str__(self):
+        return "<Node>"
+
+
+class RegressorNode(Node):
+    """ A node to be used for regression tasks """
+
+    def make_children(self, y, left_indices):
+        """ Calculate leaf values and return children """
         leaf_values = []
         for left_index in (left_indices, ~left_indices):
             assert (self.indices & left_index).any(), "empty leaf found"
             leaf_values.append(np.mean(y[self.indices & left_index]))
-        return leaf_values
+        return [
+            RegressorNode(indices=(self.indices & left_indices), parent=self,
+                          left=True, value=leaf_values[0]),
+            RegressorNode(indices=(self.indices & (~left_indices)), parent=self,
+                          left=False, value=leaf_values[1])
+        ]
 
-
-    def _best_split(self, X, y):
+    def _split_target(self, y, indices):
+        """ Calculate a splitting target: sum of variances
         """
-        When splitting a node, return a tuple of (feature, value) corresponding to the optimal
-        split: feature is the number of the feature which has to be split and value is the
-        optimal splitting value
-        """
-
-        # find out best split: search all directions but only at each tenth percentile of values
-        percentiles = np.percentile(X, np.arange(10, 100, 10), axis=0)
-        variances = np.zeros_like(percentiles)
-
-        def var_sum(data, indices):
-            """
-            Calculate sum of variances in the two child nodes
-            """
-            var = np.var(data[indices], axis=0) if indices.any() else np.Inf
-            var += np.var(data[~indices], axis=0) if (~indices).any() else np.Inf
-            # Inf is used here to force not to split in a way that nothing remains on one side
-            return var
-
-        for val in range(variances.shape[0]):
-            for feat in range(variances.shape[1]):
-                limit = percentiles[val, feat]
-                left_indices = X[:, feat] <= limit
-                variances[val, feat] = var_sum(y, left_indices)
-        value_index, feature = np.unravel_index(np.argmin(variances), variances.shape) # pylint: disable=unbalanced-tuple-unpacking
-
-        return (feature, percentiles[value_index, feature])
+        var = np.var(y[indices]) if indices.any() else np.Inf
+        var += np.var(y[~indices]) if (~indices).any() else np.Inf
+        # Inf is used here to force not to split in a way that nothing remains on one side
+        return var
 
     def __str__(self):
         if self.is_leaf:
             return "{:.2f}".format(self.value)
         return "x_{} <= {:.2f}?".format(self.split_feature, self.split_value)
+
+
+class ClassifierNode(Node):
+    """ A node to be used for regression tasks """
+
+    def make_children(self, y, left_indices):
+        """ Calculate leaf values and return children """
+        leaf_values = []
+        assert (self.indices & left_indices).any(), "empty leaf found"
+        assert (self.indices & ~left_indices).any(), "empty leaf found"
+
+        # find the most common boolean element on the left side; the right side is the opposite
+        left_value = np.mean(y[self.indices & left_indices]) >= 0.5
+        leaf_values = [left_value, ~left_value]
+
+        return [
+            ClassifierNode(indices=(self.indices & left_indices), parent=self,
+                           left=True, value=leaf_values[0]),
+            ClassifierNode(indices=(self.indices & (~left_indices)), parent=self,
+                           left=False, value=leaf_values[1])
+        ]
+
+    def _split_target(self, y, indices):
+        """ Calculate a splitting target: Gini index """
+        if not indices.any() or not (~indices).any():
+            return np.Inf
+
+        # for a leaf: gini = 1 - p^2(True) - p^2(False)
+        left = 1.0 - (np.sum(y[indices]) / np.sum(indices)) ** 2
+        left -= (np.sum(~y[indices]) / np.sum(indices)) ** 2
+
+        right = 1.0 - (np.sum(y[~indices]) / np.sum(~indices)) ** 2
+        right -= (np.sum(~y[~indices]) / np.sum(~indices)) ** 2
+
+        # weighted average
+        gini = (left * np.sum(indices) + right * np.sum(~indices)) / len(indices)
+        return gini
+
+    def __str__(self):
+        if self.is_leaf:
+            return "{}".format(self.value)
+        return "x_{} <= {:.2f}?".format(self.split_feature, self.split_value)
+
 
 class Tests(unittest.TestCase):
     """
@@ -190,32 +226,41 @@ class Tests(unittest.TestCase):
     """
     def test_best_split(self):
         """ Test where splitting is done """
-        X1 = np.array([[0.3, 0.7], [0.5, 0.6], [0.7, 0.6], [0.3, 0.4], [0.5, 0.3], [0.7, 0.4]])
-        y1 = np.array([10, 8, 7, 1, 2, 4])
-        node = Node()
-        cut_feature, cut_value = node._best_split(X1, y1) # pylint: disable=protected-access
+        test_X = np.array([[0.3, 0.7], [0.5, 0.6], [0.7, 0.6], [0.3, 0.4], [0.5, 0.3], [0.7, 0.4]])
+        test_y = np.array([10, 8, 7, 1, 2, 4])
+        node = RegressorNode(indices=np.array([True]*6))
+        cut_feature, cut_value = node.split(test_X, test_y)
         self.assertEqual(cut_feature, 1)
         self.assertTrue(cut_value >= 0.4)
         self.assertTrue(cut_value < 0.6)
 
-        # expected output: something like (1, 0.5)
+    def test_simplest_case(self):
+        """ Test a simplistic case """
+        test_X = np.array([[0, 0], [1, 0], [0, 1], [1, 1]])
+        test_y = np.array([1, 2, 3, 4])
+        test_reg = RegressionTree(max_depth=2)
+        test_reg.fit(test_X, test_y)
+        test_pred = test_reg.predict(np.array([[-1, -1], [2, -1], [-1, 2], [2, 2]]))
+        self.assertEqual(list(test_pred), [1., 2., 3., 4.])
+
+
     def test_made_up_data_depth_2(self):
         """ Test with 2-level tree """
-        X2 = np.array([[0.3, 0.7], [0.5, 0.6], [0.7, 0.6], [0.3, 0.4], [0.5, 0.3], [0.7, 0.4]])
-        y2 = np.array([10, 8, 7, 1, 2, 4])
-        reg2 = RegressionTree(max_depth=2)
-        reg2.fit(X2, y2)
-        prediction2 = list(reg2.predict(np.array([[0.4, 0.4], [0.6, 0.6], [0.8, 0.4], [0.2, 0.8]])))
-        self.assertEqual(prediction2, list(np.array([1.50, 7.50, 4.00, 10.00])))
+        test_X = np.array([[0.3, 0.7], [0.5, 0.6], [0.7, 0.6], [0.3, 0.4], [0.5, 0.3], [0.7, 0.4]])
+        test_y = np.array([10, 8, 7, 1, 2, 4])
+        test_reg = RegressionTree(max_depth=2)
+        test_reg.fit(test_X, test_y)
+        test_pred = test_reg.predict(np.array([[0.4, 0.4], [0.6, 0.6], [0.8, 0.4], [0.2, 0.8]]))
+        self.assertEqual(list(test_pred), [1.50, 7.50, 4.00, 10.00])
 
     def test_made_up_data_depth_3(self):
         """ Test with 3-level tree """
-        X3 = np.array([[0.3, 0.7], [0.5, 0.6], [0.7, 0.6], [0.3, 0.4], [0.5, 0.3], [0.7, 0.4]])
-        y3 = np.array([10, 8, 7, 1, 2, 4])
-        reg3 = RegressionTree(max_depth=3)
-        reg3.fit(X3, y3)
-        prediction3 = list(reg3.predict(np.array([[0.4, 0.4], [0.6, 0.6], [0.8, 0.4], [0.2, 0.8]])))
-        self.assertEqual(prediction3, list(np.array([2.00, 7.00, 4.00, 10.00])))
+        test_X = np.array([[0.3, 0.7], [0.5, 0.6], [0.7, 0.6], [0.3, 0.4], [0.5, 0.3], [0.7, 0.4]])
+        test_y = np.array([10, 8, 7, 1, 2, 4])
+        test_reg = RegressionTree(max_depth=3)
+        test_reg.fit(test_X, test_y)
+        test_pred = test_reg.predict(np.array([[0.4, 0.4], [0.6, 0.6], [0.8, 0.4], [0.2, 0.8]]))
+        self.assertEqual(list(test_pred), [2.00, 7.00, 4.00, 10.00])
 
 if __name__ == '__main__':
     unittest.main()
