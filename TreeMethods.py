@@ -5,9 +5,9 @@ import unittest
 import numpy as np
 from anytree import NodeMixin, RenderTree
 
-class BoostedTree:
+class BoostedRegressor:
     """
-    A boosted tree learner object
+    A boosted regressor tree ensemble object
     """
 
     def __init__(self, max_depth=3, num_iter=3):
@@ -20,7 +20,7 @@ class BoostedTree:
         """ Fit data and create model """
         residual = y
         for _ in range(self.num_iter):
-            tree = RegressionTree(max_depth=self.max_depth)
+            tree = RegressorTree(max_depth=self.max_depth)
             tree.fit(X, residual)
             residual = residual - tree.predict(X)
             self.trees.append(tree)
@@ -34,13 +34,11 @@ class BoostedTree:
         return prediction
 
 
-class RegressionTree:
+class RegressorTree:
     """
-    A self-made regression tree to learn about how these things work...
-    Tóth Bence, 2019. 12. 02.
+    A self-made regression tree to learn about how these things work
     A nodal decision should always look like x_j <= a:
     left (0th child) if True, right (1st child) if False
-    A node is a list of 3-tuples like: (j, a, True) meaning x_j <= a is True
     """
 
     def __init__(self, max_depth=3):
@@ -238,7 +236,7 @@ class Tests(unittest.TestCase):
         """ Test a simplistic case """
         test_X = np.array([[0, 0], [1, 0], [0, 1], [1, 1]])
         test_y = np.array([1, 2, 3, 4])
-        test_reg = RegressionTree(max_depth=2)
+        test_reg = RegressorTree(max_depth=2)
         test_reg.fit(test_X, test_y)
         test_pred = test_reg.predict(np.array([[-1, -1], [2, -1], [-1, 2], [2, 2]]))
         self.assertEqual(list(test_pred), [1., 2., 3., 4.])
@@ -248,7 +246,7 @@ class Tests(unittest.TestCase):
         """ Test with 2-level tree """
         test_X = np.array([[0.3, 0.7], [0.5, 0.6], [0.7, 0.6], [0.3, 0.4], [0.5, 0.3], [0.7, 0.4]])
         test_y = np.array([10, 8, 7, 1, 2, 4])
-        test_reg = RegressionTree(max_depth=2)
+        test_reg = RegressorTree(max_depth=2)
         test_reg.fit(test_X, test_y)
         test_pred = test_reg.predict(np.array([[0.4, 0.4], [0.6, 0.6], [0.8, 0.4], [0.2, 0.8]]))
         self.assertEqual(list(test_pred), [1.50, 7.50, 4.00, 10.00])
@@ -257,7 +255,7 @@ class Tests(unittest.TestCase):
         """ Test with 3-level tree """
         test_X = np.array([[0.3, 0.7], [0.5, 0.6], [0.7, 0.6], [0.3, 0.4], [0.5, 0.3], [0.7, 0.4]])
         test_y = np.array([10, 8, 7, 1, 2, 4])
-        test_reg = RegressionTree(max_depth=3)
+        test_reg = RegressorTree(max_depth=3)
         test_reg.fit(test_X, test_y)
         test_pred = test_reg.predict(np.array([[0.4, 0.4], [0.6, 0.6], [0.8, 0.4], [0.2, 0.8]]))
         self.assertEqual(list(test_pred), [2.00, 7.00, 4.00, 10.00])
