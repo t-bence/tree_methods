@@ -2,12 +2,11 @@
 test file for the regression tree algorithm
 """
 import numpy as np
-from sklearn.datasets import load_boston
-
 from TreeMethods import RegressorTree, GradientBoostedRegressor
 
 ### BOSTON case
 """
+from sklearn.datasets import load boston
 cols = [0, 1, 2, 4, 5, 6, 7, 9, 10]
 features = boston_dataset = load_boston().feature_names[cols]
 X, y = load_boston(return_X_y=True)
@@ -26,8 +25,8 @@ X = np.array([[1.6, 2, 0], [1.6, 1, 1], [1.5, 2, 1], [1.8, 0, 0],
               [1.5, 1, 0], [1.4, 2, 1]])
 y = np.array([88, 76, 56, 73, 77, 57])
 features = ['height', 'color', 'gender']
-test = np.array([[1.6, 2, 0]])
-correct_values = np.array([88])
+test = np.array([[1.6, 2, 0], [1.7, 2, 1]])
+correct_values = np.array([88, 70])
 
 # fit a single tree
 reg = RegressorTree(max_depth=2)
