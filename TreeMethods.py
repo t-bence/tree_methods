@@ -180,6 +180,8 @@ class Node(NodeMixin):
         self.split_value = percentiles[value_index, self.split_feature]
         # indices in the <= part (left node)
         left_indices = X[:, self.split_feature] <= self.split_value
+        assert (self.indices & left_indices).any(), "empty leaf found"
+        assert (self.indices & ~left_indices).any(), "empty leaf found"
         self.children = self.make_children(y, left_indices)
 
         return (self.split_feature, self.split_value)
@@ -193,23 +195,20 @@ class Node(NodeMixin):
         raise NotImplementedError
 
     def __str__(self):
-        return "<Node>"
-
+        if self.is_leaf:
+            return "{}".format(self.value)
+        return "x_{} <= {:.2f}?".format(self.split_feature, self.split_value)
 
 class RegressorNode(Node):
     """ A node to be used for regression tasks """
 
     def make_children(self, y, left_indices):
         """ Calculate leaf values and return children """
-        leaf_values = []
-        for left_index in (left_indices, ~left_indices):
-            assert (self.indices & left_index).any(), "empty leaf found"
-            leaf_values.append(np.mean(y[self.indices & left_index]))
         return [
             RegressorNode(indices=(self.indices & left_indices), parent=self,
-                          left=True, value=leaf_values[0]),
+                          left=True, value=np.mean(y[self.indices & left_indices])),
             RegressorNode(indices=(self.indices & (~left_indices)), parent=self,
-                          left=False, value=leaf_values[1])
+                          left=False, value=np.mean(y[self.indices & ~left_indices]))
         ]
 
     def _split_target(self, y, indices):
@@ -220,30 +219,22 @@ class RegressorNode(Node):
         # Inf is used here to force not to split in a way that nothing remains on one side
         return var
 
-    def __str__(self):
-        if self.is_leaf:
-            return "{:.2f}".format(self.value)
-        return "x_{} <= {:.2f}?".format(self.split_feature, self.split_value)
-
 
 class ClassifierNode(Node):
     """ A node to be used for regression tasks """
 
     def make_children(self, y, left_indices):
         """ Calculate leaf values and return children """
-        leaf_values = []
-        assert (self.indices & left_indices).any(), "empty leaf found"
-        assert (self.indices & ~left_indices).any(), "empty leaf found"
+        
 
         # find the most common boolean element on the left side; the right side is the opposite
         left_value = np.mean(y[self.indices & left_indices]) >= 0.5
-        leaf_values = [left_value, ~left_value]
-
+        
         return [
             ClassifierNode(indices=(self.indices & left_indices), parent=self,
-                           left=True, value=leaf_values[0]),
+                           left=True, value=left_value),
             ClassifierNode(indices=(self.indices & (~left_indices)), parent=self,
-                           left=False, value=leaf_values[1])
+                           left=False, value=~left_value)
         ]
 
     def _split_target(self, y, indices):
@@ -261,11 +252,6 @@ class ClassifierNode(Node):
         # weighted average
         gini = (left * np.sum(indices) + right * np.sum(~indices)) / len(indices)
         return gini
-
-    def __str__(self):
-        if self.is_leaf:
-            return "{}".format(self.value)
-        return "x_{} <= {:.2f}?".format(self.split_feature, self.split_value)
 
 
 class Tests(unittest.TestCase):
